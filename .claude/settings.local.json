@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew :app:compileDebugKotlin --console=plain -q)",
+      "Bash(./gradlew :app:compileDebugKotlin --console=plain --stacktrace)",
+      "Bash(\"C:/Program Files/Android/Android Studio/jbr/bin/java.exe\" -version)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew :app:compileDebugKotlin --console=plain)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew :app:assembleDebug --console=plain)",
+      "Bash(gh repo *)",
+      "Bash(./gradlew :app:compileDebugKotlin -q --console=plain)",
+      "Bash(./gradlew :app:assembleDebug --console=plain)",
+      "Bash(gh auth *)",
+      "Bash(git add *)"
+    ]
+  }
+}
