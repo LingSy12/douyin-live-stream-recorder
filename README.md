@@ -2,6 +2,11 @@
 
 Android app for monitoring Douyin live rooms and auto-recording when a room goes live.
 
+## 📸 Screenshots
+
+<!-- Replace screenshots/screenshot.png with a real app capture (keep the filename), or add more images below. -->
+<img src="screenshots/screenshot.png" alt="Douyin Live Recorder" width="280">
+
 ## Current capabilities
 
 - Add rooms by Douyin room ID or live URL.
