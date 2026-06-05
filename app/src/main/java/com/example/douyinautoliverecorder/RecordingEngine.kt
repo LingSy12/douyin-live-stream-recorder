@@ -430,10 +430,11 @@ class RecordingEngine(
         }
 
         val merged = mergeSegments(activeRecording, usableSegments)
-        cleanupSegments(activeRecording)
         active.remove(roomId, activeRecording)
 
         if (merged && hasUsableOutput(activeRecording.recording.tempFile)) {
+            // Output is safely written; only now is it safe to drop the source segments.
+            cleanupSegments(activeRecording)
             Log.d(
                 TAG,
                 "finalize room=$roomId merged ${usableSegments.size} segment(s) " +
@@ -451,7 +452,16 @@ class RecordingEngine(
                 )
             )
         } else {
-            Log.w(TAG, "finalize room=$roomId merge failed segments=${usableSegments.size}")
+            // Concat AND its largest-segment salvage both failed. Do NOT run cleanupSegments
+            // here: deleting the captured .ts would lose the recording outright. Keep the source
+            // segment(s) on disk (now in non-evictable storage) so the footage survives and can
+            // be recovered; only the unusable partial output file is removed.
+            val preserved = activeRecording.segmentFiles.toList().filter { it.exists() }
+            Log.w(
+                TAG,
+                "finalize room=$roomId merge failed; preserving ${preserved.size} source segment(s): " +
+                    preserved.joinToString { it.absolutePath }
+            )
             StorageHelper.discardRecording(activeRecording.recording)
             onFinished(
                 RecordingFinishResult(

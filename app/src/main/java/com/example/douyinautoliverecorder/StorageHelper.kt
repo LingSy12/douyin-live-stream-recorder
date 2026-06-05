@@ -100,7 +100,14 @@ object StorageHelper {
         fileName: String,
         mimeType: String
     ): PreparedRecording? {
-        val stagingDir = File(context.cacheDir, "recording-staging")
+        // In-progress capture segments AND the merged output live here until published.
+        // This must NOT be cacheDir: Android may evict cacheDir files at any time (even
+        // mid-merge) under storage pressure, which silently destroys an in-progress recording
+        // (observed: merge failing with "No such file or directory" and footage lost on Stop).
+        // Use app-specific external files storage (not evictable, roomy), falling back to the
+        // internal files dir if external storage is unavailable.
+        val stagingBase = context.getExternalFilesDir(null) ?: context.filesDir
+        val stagingDir = File(stagingBase, "recording-staging")
         if (!stagingDir.exists() && !stagingDir.mkdirs()) {
             return null
         }
