@@ -717,7 +717,6 @@ class DouyinLiveResolver(
         return repairPotentialMojibake(raw)
             .substringBefore(" - ")
             .substringBefore("|")
-            .substringBefore("_")
             .replace("#\u5728\u6296\u97f3\uff0c\u8bb0\u5f55\u7f8e\u597d\u751f\u6d3b#", "")
             .replace("\u6b63\u5728\u76f4\u64ad", "")
             .replace("\u7684\u76f4\u64ad\u95f4", "")

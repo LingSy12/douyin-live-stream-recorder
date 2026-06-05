@@ -399,14 +399,19 @@ private fun RecorderScreen() {
             initialMinutes = initialMinutes,
             onDismiss = { activeTimePicker = null },
             onConfirm = { pickedMinutes ->
-                when (pickerTarget) {
+                val updated = when (pickerTarget) {
                     SchedulePickerTarget.START -> {
                         windowStartInput = MonitorWindow.formatMinutes(pickedMinutes)
+                        settings.copy(monitorWindowStartMinutes = pickedMinutes)
                     }
                     SchedulePickerTarget.END -> {
                         windowEndInput = MonitorWindow.formatMinutes(pickedMinutes)
+                        settings.copy(monitorWindowEndMinutes = pickedMinutes)
                     }
                 }
+                settings = updated
+                AppPrefs.setSettings(context, updated)
+                triggerImmediateMonitorIfRunning()
                 activeTimePicker = null
             }
         )
@@ -735,7 +740,10 @@ private fun RecorderScreen() {
                         Switch(
                             checked = settings.scheduleEnabled,
                             onCheckedChange = { enabled ->
-                                settings = settings.copy(scheduleEnabled = enabled)
+                                val updated = settings.copy(scheduleEnabled = enabled)
+                                settings = updated
+                                AppPrefs.setSettings(context, updated)
+                                triggerImmediateMonitorIfRunning()
                             }
                         )
                     }
@@ -1133,7 +1141,15 @@ private fun RoomCard(
     } else {
         null
     }
-    val messageText = runtime?.message?.takeIf { it.isNotBlank() }
+    val messageText = runtime?.message
+        ?.takeIf { it.isNotBlank() }
+        ?.takeUnless { msg ->
+            // Avoid lines like "Status: Checking | Checking..." where the message just echoes the label.
+            msg.trim().trimEnd('.', '…', '。').equals(
+                statusLabel.trim().trimEnd('.', '…', '。'),
+                ignoreCase = true
+            )
+        }
     val baseStatusLine = if (recordingElapsed != null) {
         if (isZh) {
             "\u72b6\u6001: $statusLabel  |  \u65f6\u957f $recordingElapsed"
@@ -1266,8 +1282,6 @@ private fun RoomCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-
-                DragSortBadge()
             }
 
             Text(
@@ -1421,10 +1435,6 @@ private fun formatElapsedDuration(durationMs: Long): String {
     } else {
         String.format("%02d:%02d", minutes, seconds)
     }
-}
-
-private fun formatAbsoluteTime(timeMs: Long): String {
-    return DateFormat.format("MM-dd HH:mm", timeMs).toString()
 }
 
 

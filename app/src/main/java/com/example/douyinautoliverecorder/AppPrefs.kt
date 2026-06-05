@@ -151,19 +151,6 @@ object AppPrefs {
         saveRooms(context, updated)
     }
 
-    fun moveRoom(context: Context, roomId: String, offset: Int): Boolean {
-        if (offset == 0) {
-            return false
-        }
-        val current = getRooms(context).toMutableList()
-        val fromIndex = current.indexOfFirst { it.id == roomId }
-        if (fromIndex < 0) {
-            return false
-        }
-        val toIndex = (fromIndex + offset).coerceIn(0, current.lastIndex)
-        return moveRoomTo(context, roomId, toIndex)
-    }
-
     fun moveRoomTo(context: Context, roomId: String, targetIndex: Int): Boolean {
         val current = getRooms(context).toMutableList()
         val fromIndex = current.indexOfFirst { it.id == roomId }

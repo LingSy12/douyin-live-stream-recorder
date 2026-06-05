@@ -13,6 +13,14 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        // ffmpeg-kit-full ships native libs only for arm64-v8a / armeabi-v7a. Without this,
+        // other dependencies' x86/x86_64 stubs make Android pick an x86 ABI on x86_64 devices and
+        // emulators, where ffmpeg's .so is then absent -> UnsatisfiedLinkError at record time.
+        // Restricting to arm ABIs makes such devices load the arm libs via translation instead.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildTypes {

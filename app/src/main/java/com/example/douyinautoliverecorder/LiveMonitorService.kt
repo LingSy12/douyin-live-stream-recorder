@@ -20,6 +20,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -161,6 +162,7 @@ class LiveMonitorService : Service() {
                 runCatching {
                     runMonitorCycleLocked()
                 }.onFailure { error ->
+                    if (error is CancellationException) throw error
                     handleMonitorFailure(error)
                 }
 
@@ -191,6 +193,7 @@ class LiveMonitorService : Service() {
             runCatching {
                 runMonitorCycleLocked()
             }.onFailure { error ->
+                if (error is CancellationException) throw error
                 handleMonitorFailure(error)
             }
         }
@@ -275,6 +278,7 @@ class LiveMonitorService : Service() {
             runCatching {
                 processRoom(room, settings)
             }.onFailure { error ->
+                if (error is CancellationException) throw error
                 RuntimeStateStore.updateRoom(room.id) {
                     it.copy(
                         status = RoomStatus.ERROR,
@@ -414,10 +418,8 @@ class LiveMonitorService : Service() {
         val now = System.currentTimeMillis()
 
         if (recordingEngine.isRecording(room.id)) {
-            var startedAtMs = now
             RuntimeStateStore.updateRoom(room.id) { current ->
                 val actualStartedAt = current.startedAtMs ?: now
-                startedAtMs = actualStartedAt
                 val liveStartedAt = current.lastLiveStartAtMs ?: actualStartedAt
                 current.copy(
                     status = RoomStatus.RECORDING,
@@ -776,32 +778,6 @@ class LiveMonitorService : Service() {
         }
     }
 
-    private fun publishEvent(
-        title: String,
-        body: String,
-        room: MonitoredRoom? = null,
-        avatar: Bitmap? = null
-    ) {
-        val builder = NotificationCompat.Builder(this, CHANNEL_EVENTS)
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_EVENT)
-            .setAutoCancel(true)
-            .setTimeoutAfter(EVENT_NOTIFICATION_TIMEOUT_MS)
-            .setContentIntent(openAppPendingIntent())
-        (avatar ?: roomNotificationLargeIcon(room))?.let(builder::setLargeIcon)
-        val eventNotification = builder.build()
-
-        runCatching {
-            NotificationManagerCompat.from(this).notify(EVENT_NOTIFICATION_ID, eventNotification)
-        }.onFailure {
-            Log.w(TAG, "publishEvent failed: ${it.message}")
-        }
-    }
-
     private fun buildPersistentNotification(status: NotificationStatus): android.app.Notification {
         val builder = NotificationCompat.Builder(this, CHANNEL_MONITOR)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
@@ -870,7 +846,7 @@ class LiveMonitorService : Service() {
         )
     }
 
-    private fun syncRoomNotifications(now: Long = System.currentTimeMillis()) {
+    private fun syncRoomNotifications() {
         val manager = NotificationManagerCompat.from(this)
         val roomsById = AppPrefs.getRooms(this).associateBy { it.id }
         val states = RuntimeStateStore.roomStates.value
@@ -1151,7 +1127,7 @@ class LiveMonitorService : Service() {
         publishPersistentStatus()
     }
 
-    private fun buildNotificationStatus(now: Long = System.currentTimeMillis()): NotificationStatus {
+    private fun buildNotificationStatus(): NotificationStatus {
         val roomsById = AppPrefs.getRooms(this).associateBy { it.id }
         val states = RuntimeStateStore.roomStates.value
 
@@ -1239,14 +1215,6 @@ class LiveMonitorService : Service() {
         }
     }
 
-    private fun overlayProgressMessage(): String {
-        return if (isZh()) {
-            "\u6b63\u5728\u5408\u6210\u5f39\u5e55\u89c6\u9891..."
-        } else {
-            "Rendering danmu overlay..."
-        }
-    }
-
     private fun stopSavingMessage(): String {
         return if (isZh()) {
             "\u6b63\u5728\u505c\u6b62\u5e76\u4fdd\u5b58\u5f55\u5236..."
@@ -1329,22 +1297,6 @@ class LiveMonitorService : Service() {
         }
     }
 
-    private fun savedWithDanmuMessage(stopped: Boolean): String {
-        return if (isZh()) {
-            if (stopped) "\u5df2\u505c\u6b62\u5e76\u4fdd\u5b58\u542b\u5f39\u5e55 MP4" else "\u5df2\u4fdd\u5b58\u542b\u5f39\u5e55 MP4"
-        } else {
-            if (stopped) "Stopped and saved MP4 with danmu" else "Saved MP4 with danmu"
-        }
-    }
-
-    private fun savedWithoutDanmuMessage(stopped: Boolean): String {
-        return if (isZh()) {
-            if (stopped) "\u5df2\u505c\u6b62\u5e76\u4fdd\u5b58 MP4\uff08\u5f39\u5e55\u5408\u6210\u5931\u8d25\uff09" else "\u5df2\u4fdd\u5b58 MP4\uff08\u5f39\u5e55\u5408\u6210\u5931\u8d25\uff09"
-        } else {
-            if (stopped) "Stopped and saved MP4 (danmu overlay failed)" else "Saved MP4 (danmu overlay failed)"
-        }
-    }
-
     private fun roomNotificationLargeIcon(room: MonitoredRoom?): Bitmap? {
         room ?: return null
         notificationAvatarCache[room.id]?.let { return it }
@@ -1363,19 +1315,6 @@ class LiveMonitorService : Service() {
         val icon = createStatusBarAvatarIcon(avatar) ?: return null
         statusBarAvatarIconCache[room.id] = icon
         return icon
-    }
-
-    private fun fetchRoomAvatarForEvent(room: MonitoredRoom?): Bitmap? {
-        room ?: return null
-        notificationAvatarCache[room.id]?.let { return it }
-        val avatarUrl = room.avatarUrl ?: return null
-        val bitmap = fetchRoomAvatarBitmap(
-            avatarUrl = avatarUrl,
-            callTimeoutMs = EVENT_AVATAR_FETCH_TIMEOUT_MS
-        ) ?: return null
-        notificationAvatarCache[room.id] = bitmap
-        statusBarAvatarIconCache.remove(room.id)
-        return bitmap
     }
 
     private fun ensureRoomAvatar(roomId: String, avatarUrl: String) {
@@ -1462,18 +1401,6 @@ class LiveMonitorService : Service() {
         return room?.displayName ?: room?.douyinId ?: room?.input ?: if (isZh()) "\u76f4\u64ad\u95f4" else "Room"
     }
 
-    private fun formatElapsed(durationMs: Long): String {
-        val totalSeconds = (durationMs / 1000L).coerceAtLeast(0L)
-        val hours = totalSeconds / 3600L
-        val minutes = (totalSeconds % 3600L) / 60L
-        val seconds = totalSeconds % 60L
-        return if (hours > 0L) {
-            String.format("%02d:%02d:%02d", hours, minutes, seconds)
-        } else {
-            String.format("%02d:%02d", minutes, seconds)
-        }
-    }
-
     private fun isZh(): Boolean {
         val locales = resources.configuration.locales
         return locales.size() > 0 && locales[0].language.startsWith("zh")
@@ -1521,8 +1448,6 @@ class LiveMonitorService : Service() {
         private const val PROBE_TIMEOUT_MS = 28_000L
         private const val PROFILE_REFRESH_TIMEOUT_MS = 25_000L
         private const val NOTIFICATION_REFRESH_INTERVAL_MS = 10_000L
-        private const val EVENT_AVATAR_FETCH_TIMEOUT_MS = 2_500L
-        private const val EVENT_NOTIFICATION_TIMEOUT_MS = 20_000L
         private const val CHANNEL_MONITOR = "live_monitor_channel"
         private const val CHANNEL_RECORDINGS = "recording_room_channel_v2"
         private const val CHANNEL_EVENTS = "live_events_channel_v2"

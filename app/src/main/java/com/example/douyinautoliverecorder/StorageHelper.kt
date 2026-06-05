@@ -66,33 +66,6 @@ object StorageHelper {
         }
     }
 
-    fun duplicateRecording(
-        recording: PreparedRecording,
-        suffix: String
-    ): PreparedRecording? {
-        if (!recording.tempFile.exists()) {
-            return null
-        }
-
-        val duplicateFileName = withSuffix(recording.fileName, suffix)
-        val duplicateFile = File(recording.tempFile.parentFile, duplicateFileName)
-        return try {
-            duplicateFile.outputStream().buffered(COPY_BUFFER_SIZE).use { sink ->
-                recording.tempFile.inputStream().buffered(COPY_BUFFER_SIZE).use { input ->
-                    copyWithProgress(input, sink, recording.tempFile.length(), null)
-                }
-            }
-            recording.copy(
-                tempFile = duplicateFile,
-                fileName = duplicateFileName,
-                displayPath = buildDisplayPath(recording.storageMode, duplicateFileName)
-            )
-        } catch (_: Throwable) {
-            runCatching { duplicateFile.delete() }
-            null
-        }
-    }
-
     fun renameRecording(
         recording: PreparedRecording,
         newFileName: String
@@ -309,13 +282,6 @@ object StorageHelper {
 
             StorageMode.DOCUMENT_TREE -> fileName
         }
-    }
-
-    private fun withSuffix(fileName: String, suffix: String): String {
-        val extension = fileName.substringAfterLast('.', "")
-        val baseName = fileName.substringBeforeLast('.').ifBlank { fileName }
-        val finalBase = sanitizeSegment(baseName) + suffix
-        return if (extension.isBlank()) finalBase else "$finalBase.$extension"
     }
 
     private fun sanitizeSegment(value: String): String {

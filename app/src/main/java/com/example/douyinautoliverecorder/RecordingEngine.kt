@@ -1,6 +1,7 @@
 package com.example.douyinautoliverecorder
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.FFmpegSession
@@ -191,21 +192,87 @@ class RecordingEngine(
 
         val command = buildSegmentCommand(streamUrl, segmentFile.absolutePath)
         Log.d(TAG, "launch segment room=$roomId index=${activeRecording.segmentIndex}")
+        // A segment is settled exactly once, by whichever fires first: ffmpeg's own completion
+        // callback, or the no-data watchdog below. The watchdog is what stops a pull URL that never
+        // delivers bytes (e.g. a geo-blocked 403) from looping forever behind a phantom "Recording".
+        val settled = AtomicBoolean(false)
         val session = FFmpegKit.executeAsync(command) { completedSession ->
-            handleSegmentCompletion(roomId, activeRecording, segmentFile, completedSession, onFinished)
+            if (settled.compareAndSet(false, true)) {
+                handleSegmentCompletion(
+                    roomId, activeRecording, segmentFile,
+                    completedSession.returnCode, completedSession, onFinished
+                )
+            }
         }
         activeRecording.sessionId = session.sessionId
         if (activeRecording.stopping && activeRecording.sessionId > 0) {
             FFmpegKit.cancel(activeRecording.sessionId)
         }
+        startSegmentWatchdog(roomId, activeRecording, session.sessionId, segmentFile, settled, onFinished)
     }
 
-    /** Called on the ffmpeg worker thread when a segment's capture ends. */
+    /**
+     * Force-ends a segment whose ffmpeg never settles on its own. Trips when the output file gets
+     * no new bytes for [NO_DATA_TIMEOUT_MS] (dead/blocked pull URL), or when a stop was requested
+     * and ffmpeg hasn't wound down within [STOP_GRACE_MS]. It cancels the session and settles the
+     * segment itself, so the recording can fail over to another URL / re-probe / give up — instead
+     * of hanging on "Recording" or "Saving" indefinitely.
+     */
+    private fun startSegmentWatchdog(
+        roomId: String,
+        activeRecording: ActiveRecording,
+        sessionId: Long,
+        segmentFile: File,
+        settled: AtomicBoolean,
+        onFinished: (RecordingFinishResult) -> Unit
+    ) {
+        scope.launch {
+            var lastSize = 0L
+            var lastProgressAt = SystemClock.uptimeMillis()
+            var stoppingSince = 0L
+            while (true) {
+                delay(WATCHDOG_CHECK_MS)
+                if (settled.get() || active[roomId] !== activeRecording) {
+                    return@launch
+                }
+                val now = SystemClock.uptimeMillis()
+                val size = segmentFile.length()
+                if (size > lastSize) {
+                    lastSize = size
+                    lastProgressAt = now
+                }
+                val stopping = activeRecording.stopping
+                if (stopping && stoppingSince == 0L) {
+                    stoppingSince = now
+                }
+                val noDataTrip = !stopping && (now - lastProgressAt >= NO_DATA_TIMEOUT_MS)
+                val stopTrip = stopping && (now - stoppingSince >= STOP_GRACE_MS)
+                if (noDataTrip || stopTrip) {
+                    if (settled.compareAndSet(false, true)) {
+                        Log.w(
+                            TAG,
+                            "watchdog ending segment room=$roomId index=${activeRecording.segmentIndex} " +
+                                "bytes=$size noData=$noDataTrip stop=$stopTrip"
+                        )
+                        runCatching { FFmpegKit.cancel(sessionId) }
+                        handleSegmentCompletion(roomId, activeRecording, segmentFile, null, null, onFinished)
+                    }
+                    return@launch
+                }
+            }
+        }
+    }
+
+    /**
+     * Settles a finished segment. Called either from ffmpeg's completion callback (with a real
+     * [returnCode] and [session]) or from the watchdog (both null) when it force-ends a stalled one.
+     */
     private fun handleSegmentCompletion(
         roomId: String,
         activeRecording: ActiveRecording,
         segmentFile: File,
-        completedSession: FFmpegSession,
+        returnCode: ReturnCode?,
+        session: FFmpegSession?,
         onFinished: (RecordingFinishResult) -> Unit
     ) {
         if (active[roomId] !== activeRecording) {
@@ -213,7 +280,6 @@ class RecordingEngine(
             return
         }
 
-        val returnCode = completedSession.returnCode
         val hadOutput = hasUsableOutput(segmentFile)
         if (hadOutput) {
             if (!activeRecording.segmentFiles.contains(segmentFile)) {
@@ -224,8 +290,9 @@ class RecordingEngine(
             runCatching { segmentFile.delete() }
         }
 
-        // User asked to stop (or the whole service is shutting down): wrap up now.
-        if (ReturnCode.isCancel(returnCode) || activeRecording.stopping) {
+        // User asked to stop, the service is shutting down, or the watchdog force-ended a
+        // healthy-but-finished segment while stopping: wrap up now.
+        if ((returnCode != null && ReturnCode.isCancel(returnCode)) || activeRecording.stopping) {
             scope.launch { finalizeAndFinish(roomId, activeRecording, onFinished) }
             return
         }
@@ -255,12 +322,18 @@ class RecordingEngine(
             return
         }
 
-        // Every candidate URL failed this round.
+        // Every candidate URL failed this round. A stream that has never yielded a single usable
+        // byte (e.g. blocked/dead from the start) is given up on sooner than one that captured
+        // real data before dropping.
         activeRecording.emptyRounds += 1
-        if (activeRecording.emptyRounds >= MAX_EMPTY_ROUNDS) {
-            val logs = completedSession.allLogsAsString.ifBlank {
-                completedSession.failStackTrace.orEmpty()
-            }
+        val giveUpAfter = if (activeRecording.segmentFiles.isEmpty()) {
+            MAX_EMPTY_ROUNDS_NO_CAPTURE
+        } else {
+            MAX_EMPTY_ROUNDS
+        }
+        if (activeRecording.emptyRounds >= giveUpAfter) {
+            val logs = session?.let { s -> s.allLogsAsString.ifBlank { s.failStackTrace.orEmpty() } }
+                ?: AppText.recordingFailed(appContext)
             Log.w(TAG, "giving up room=$roomId after ${activeRecording.emptyRounds} empty rounds")
             scope.launch {
                 finalizeAndFinish(roomId, activeRecording, onFinished, failureLogs = logs)
@@ -546,8 +619,20 @@ class RecordingEngine(
         private const val SHORT_BACKOFF_MS = 2_000L
         private const val MAX_BACKOFF_MS = 30_000L
 
+        /** How often the per-segment watchdog samples the output file. */
+        private const val WATCHDOG_CHECK_MS = 3_000L
+
+        /** Force-end a segment whose output file has gained no new bytes for this long. */
+        private const val NO_DATA_TIMEOUT_MS = 20_000L
+
+        /** After a stop is requested, force-end the segment if ffmpeg hasn't wound down by then. */
+        private const val STOP_GRACE_MS = 10_000L
+
         /** Stop trying to revive a stream after this many consecutive empty re-probe rounds. */
         private const val MAX_EMPTY_ROUNDS = 5
+
+        /** Lower give-up threshold for a stream that has never produced a single usable byte. */
+        private const val MAX_EMPTY_ROUNDS_NO_CAPTURE = 2
         private const val DEFAULT_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
