@@ -157,21 +157,20 @@ object StorageHelper {
                     null,
                     null
                 )
+                // Published successfully; only now is it safe to drop the staging source.
+                if (!keepSourceFile) {
+                    discardRecording(recording)
+                }
                 recording.displayPath
             } catch (_: Throwable) {
                 runCatching { context.contentResolver.delete(uri, null, null) }
                 null
-            } finally {
-                if (!keepSourceFile) {
-                    discardRecording(recording)
-                }
             }
         }
 
         val root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
         val folder = File(root, PUBLIC_SUBDIRECTORY)
         if (!folder.exists() && !folder.mkdirs()) {
-            discardRecording(recording)
             return null
         }
 
@@ -188,13 +187,14 @@ object StorageHelper {
                 arrayOf(recording.mimeType),
                 null
             )
-            target.absolutePath
-        } catch (_: Throwable) {
-            null
-        } finally {
+            // Published successfully; only now is it safe to drop the staging source.
             if (!keepSourceFile) {
                 discardRecording(recording)
             }
+            target.absolutePath
+        } catch (_: Throwable) {
+            runCatching { target.delete() }
+            null
         }
     }
 
@@ -218,14 +218,14 @@ object StorageHelper {
                     copyWithProgress(input, sink, recording.tempFile.length(), onProgress)
                 }
             } ?: return null
+            // Published successfully; only now is it safe to drop the staging source.
+            if (!keepSourceFile) {
+                discardRecording(recording)
+            }
             target.uri.toString()
         } catch (_: Throwable) {
             runCatching { target.delete() }
             null
-        } finally {
-            if (!keepSourceFile) {
-                discardRecording(recording)
-            }
         }
     }
 

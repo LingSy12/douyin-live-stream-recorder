@@ -706,8 +706,11 @@ class LiveMonitorService : Service() {
             keepSourceFile = shouldGenerateDanmu
         )
         if (publishedPath == null) {
+            // Publish failed (e.g. out of storage). Do NOT delete the merged file — that would
+            // lose the recording outright; keep it in staging so it can be recovered. Only the
+            // danmu companion (re-derivable) is dropped.
             danmuRecording?.let(StorageHelper::discardRecording)
-            sourceRecording.takeIf { it.tempFile.exists() }?.let(StorageHelper::discardRecording)
+            Log.w(TAG, "publish failed room=$roomId; kept merged file at ${sourceRecording.tempFile.absolutePath}")
             return FinalizedRecordingResult(
                 isError = true,
                 message = AppText.prepareStorageFailed(this),
