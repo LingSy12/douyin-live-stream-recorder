@@ -19,6 +19,8 @@ class DouyinLiveResolver(
         .build(),
     private val webProbe: WebViewLiveProbe? = null
 ) {
+    private val apiProbe = DouyinApiProbe(client)
+
     private data class ProbeAttempt(
         val sourceUrl: String,
         val finalUrl: String,
@@ -40,6 +42,16 @@ class DouyinLiveResolver(
                 message = "Invalid room input",
                 isReliable = false
             )
+        }
+
+        // Fast path: signed direct `enter` API (cheap + concurrency-safe). Returns a confident
+        // result (live-with-streams or reliably offline) or null to fall back to the WebView path.
+        DouyinApiProbe.extractWebRid(normalized)?.let { webRid ->
+            val apiResult = apiProbe.probe(webRid, inputDisplay, inputDouyinId)
+            if (apiResult != null) {
+                logProbe(input, normalized, "api:enter/$webRid", apiResult)
+                return@withContext apiResult
+            }
         }
 
         return@withContext runCatching {
