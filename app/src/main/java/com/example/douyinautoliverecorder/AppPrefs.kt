@@ -18,6 +18,7 @@ object AppPrefs {
     private const val KEY_BITRATE = "bitrate"
     private const val KEY_STORAGE_MODE = "storage_mode"
     private const val KEY_SAVE_OUTPUT_MODE = "save_output_mode"
+    private const val KEY_LIVE_CUE_ENABLED = "live_cue_enabled"
     private const val KEY_STORAGE_TREE_URI = "storage_tree_uri"
     private const val KEY_SCHEDULE_ENABLED = "schedule_enabled"
     private const val KEY_MONITOR_WINDOW_START = "monitor_window_start"
@@ -37,6 +38,7 @@ object AppPrefs {
             saveOutputMode = SaveOutputMode.fromName(
                 prefs.getString(KEY_SAVE_OUTPUT_MODE, SaveOutputMode.RAW_AND_DANMU.name)
             ),
+            liveCueEnabled = prefs.getBoolean(KEY_LIVE_CUE_ENABLED, true),
             storageTreeUri = prefs.getString(KEY_STORAGE_TREE_URI, null),
             scheduleEnabled = prefs.getBoolean(KEY_SCHEDULE_ENABLED, false),
             monitorWindowStartMinutes = prefs.getInt(KEY_MONITOR_WINDOW_START, 0).coerceIn(0, 1439),
@@ -58,6 +60,7 @@ object AppPrefs {
             .putString(KEY_BITRATE, settings.bitrate.name)
             .putString(KEY_STORAGE_MODE, settings.storageMode.name)
             .putString(KEY_SAVE_OUTPUT_MODE, settings.saveOutputMode.name)
+            .putBoolean(KEY_LIVE_CUE_ENABLED, settings.liveCueEnabled)
             .putString(KEY_STORAGE_TREE_URI, settings.storageTreeUri)
             .putBoolean(KEY_SCHEDULE_ENABLED, settings.scheduleEnabled)
             .putInt(KEY_MONITOR_WINDOW_START, settings.monitorWindowStartMinutes.coerceIn(0, 1439))

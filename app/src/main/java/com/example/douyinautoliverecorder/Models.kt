@@ -91,6 +91,7 @@ data class AppSettings(
     val bitrate: BitratePreset = BitratePreset.MBPS_8,
     val storageMode: StorageMode = StorageMode.PUBLIC_MEDIA,
     val saveOutputMode: SaveOutputMode = SaveOutputMode.RAW_AND_DANMU,
+    val liveCueEnabled: Boolean = true,
     val storageTreeUri: String? = null,
     val scheduleEnabled: Boolean = false,
     val monitorWindowStartMinutes: Int = 0,

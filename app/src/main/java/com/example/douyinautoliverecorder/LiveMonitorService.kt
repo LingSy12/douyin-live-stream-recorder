@@ -617,7 +617,9 @@ class LiveMonitorService : Service() {
                     lastLiveStartAtMs = liveStartAt
                 )
             }
-            SystemCuePlayer.playRecordingStarted(this)
+            if (settings.liveCueEnabled) {
+                SystemCuePlayer.playRecordingStarted(this)
+            }
         } else {
             val checkedAt = System.currentTimeMillis()
             RuntimeStateStore.updateRoom(room.id) { current ->

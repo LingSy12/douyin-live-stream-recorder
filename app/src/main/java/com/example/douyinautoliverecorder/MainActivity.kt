@@ -856,6 +856,29 @@ private fun RecorderScreen() {
                         )
                     }
 
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = AppText.liveCueLabel(context))
+                        Switch(
+                            checked = settings.liveCueEnabled,
+                            onCheckedChange = { enabled ->
+                                val updated = settings.copy(liveCueEnabled = enabled)
+                                settings = updated
+                                AppPrefs.setSettings(context, updated)
+                                if (enabled) {
+                                    SystemCuePlayer.playRecordingStarted(context)
+                                }
+                            }
+                        )
+                    }
+                    Text(
+                        text = AppText.liveCueHint(context),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
                     if (settings.storageMode == StorageMode.DOCUMENT_TREE) {
                         Button(
                             onClick = { treePicker.launch(settings.storageTreeUri?.let(Uri::parse)) },

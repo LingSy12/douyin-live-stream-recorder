@@ -31,6 +31,8 @@ object AppText {
         StorageMode.PUBLIC_MEDIA -> if (zh(context)) "\u672c\u5730\u5b58\u50a8(\u76f8\u518c)" else "Local (Gallery)"
         StorageMode.DOCUMENT_TREE -> if (zh(context)) "SD\u5361/\u6587\u4ef6\u5939" else "SD Card / Folder"
     }
+    fun liveCueLabel(context: Context) = if (zh(context)) "\u5f00\u64ad/\u5f00\u59cb\u5f55\u5236\u63d0\u793a\u97f3" else "Alert sound when recording starts"
+    fun liveCueHint(context: Context) = if (zh(context)) "\u68c0\u6d4b\u5230\u5f00\u64ad\u5e76\u5f00\u59cb\u5f55\u5236\u65f6\u63d0\u9192\u4e00\u6b21\uff1a\u54cd\u94c3\u6a21\u5f0f\u54cd\u58f0\uff0c\u9707\u52a8\u6a21\u5f0f\u9707\u52a8\uff0c\u9759\u97f3\u5219\u4e0d\u63d0\u9192" else "Alerts once when a live stream is detected and recording starts: sound in normal mode, vibration in vibrate mode, nothing when silenced"
     fun scheduleLabel(context: Context) = if (zh(context)) "\u76d1\u63a7\u65f6\u95f4\u6bb5" else "Monitoring window"
     fun scheduleEnabled(context: Context) = if (zh(context)) "\u542f\u7528\u65f6\u95f4\u6bb5\u9650\u5236" else "Enable schedule window"
     fun scheduleStartLabel(context: Context) = if (zh(context)) "\u5f00\u59cb\u65f6\u95f4" else "Start time"
