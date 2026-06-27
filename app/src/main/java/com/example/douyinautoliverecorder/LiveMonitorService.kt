@@ -272,7 +272,7 @@ class LiveMonitorService : Service() {
             }
             val window = effectiveWindow(settings, room)
             if (!MonitorWindow.isWithinWindow(window.enabled, window.startMinutes, window.endMinutes, now)) {
-                pauseRoomForWindow(room, window, now)
+                pauseRoomForWindow(room, window)
                 return@forEach
             }
             runCatching {
@@ -362,7 +362,7 @@ class LiveMonitorService : Service() {
         }
     }
 
-    private fun pauseRoomForWindow(room: MonitoredRoom, window: EffectiveWindow, now: Long) {
+    private fun pauseRoomForWindow(room: MonitoredRoom, window: EffectiveWindow) {
         val message = AppText.waitingForWindow(
             this,
             MonitorWindow.formatMinutes(window.startMinutes),
@@ -374,11 +374,13 @@ class LiveMonitorService : Service() {
             recordingEngine.stop(room.id)
         } else {
             danmuRecorder.stop(room.id, publish = false).recording?.let(StorageHelper::discardRecording)
+            // Outside the window we don't actually probe, so leave lastCheckedAtMs untouched —
+            // the room card's "last check" timestamp should reflect the last real detection,
+            // not this idle pause tick.
             RuntimeStateStore.updateRoom(room.id) {
                 it.copy(
                     status = RoomStatus.IDLE,
                     message = message,
-                    lastCheckedAtMs = now,
                     startedAtMs = null,
                     saveProgressPercent = null
                 )
